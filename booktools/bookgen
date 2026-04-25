@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 
+#this script produces 2 html files, that can be turned into pdf with (ideally chromes) print preview/save to pdf.
+those pdfs are then printed separately with all of FINAL0 being printed, then flipping the paper hand over hand, or changing the polarity of the x-axis
 # constr has header element -1 to correctly pace white spaces added to strings
 # element 1 is dedicated to counting the string size, and offset while printing the string itself
 
@@ -15,7 +17,6 @@ BOOKCAP=(31170)
 InputISO=${InputBookName::3}
 mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF || awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF )
 EndoBook=("" "${EndoBook[@]}") # index from 1
-	echo ${#EndoBook[@]}
 #${EndoBook[$BookNO]/#*@/}
 INDEXFILE=index.txt
 LOGFILE=$SUBDIR/LOGFILE.txt
