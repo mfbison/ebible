@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #this script produces 2 html files, that can be turned into pdf with (ideally chromes) print preview/save to pdf.
-those pdfs are then printed separately with all of FINAL0 being printed, then flipping the paper hand over hand, or changing the polarity of the x-axis
+#those pdfs are then printed separately with all of FINAL0 being printed, then flipping the paper hand over hand, or changing the polarity of the x-axis
 # constr has header element -1 to correctly pace white spaces added to strings
 # element 1 is dedicated to counting the string size, and offset while printing the string itself
 
