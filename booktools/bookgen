@@ -1,0 +1,411 @@
+#!/usr/bin/env bash
+
+# constr has header element -1 to correctly pace white spaces added to strings
+# element 1 is dedicated to counting the string size, and offset while printing the string itself
+
+dateserial="$(date +%s)"
+sourceserial="${dateserial::5}"
+PROJECTDIRECTORY=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
+SOURCEFILE=$1
+XMLREF=xmlChapterName6.csv
+mapfile -t -d "/" sourcemap <<< $SOURCEFILE
+InputBookName="${sourcemap[$((${#sourcemap[@]}-1))]:4:-5}"
+SUBDIR=$PROJECTDIRECTORY/$sourceserial-$InputBookName
+BOOKCAP=(31170)
+InputISO=${InputBookName::3}
+mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF || awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF )
+EndoBook=("" "${EndoBook[@]}") # index from 1
+	echo ${#EndoBook[@]}
+#${EndoBook[$BookNO]/#*@/}
+INDEXFILE=index.txt
+LOGFILE=$SUBDIR/LOGFILE.txt
+mapfile -t source < $SOURCEFILE
+mapfile -t indexlinearray < $INDEXFILE
+TRANSLATIONSINDEXFILE="translations.csv"
+OTNO=$(awk -k -v str="$InputBookname" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE)
+NTNO=$(awk -k -v str="$InputBookname" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE)
+
+DOM () {
+	echo DOM
+	read -r -t 10 -p "FontBoxH:" FontBoxARG
+	read -r -t 10 -p "LineSpace:" LineSpaceARG
+#	read -r -p "TabSize:" TabSizeArg
+
+BindingTabNO=0
+# Points==========
+PageH=842
+PageW=595
+BookletPageH=$PageW
+BookletPageW=$((PageH/2))
+FontBoxH=${FontBoxARG:=7}
+#.65 is the hardcoded assumption of font width to font height. this script isnt reactive enough to satisfy curious font standards
+FontBoxW=$(awk \
+	-v Fb=$FontBoxH \
+	'BEGIN {printf "%.1f", Fb*.6;exit}')
+
+# Characters========
+LineSpace=${LineSpaceARG:=1.2}
+CharAllocH=$(awk \
+	-v b=$BookletPageH \
+	-v f=$FontBoxH \
+	-v l=$LineSpace \
+	'BEGIN {print int(b/(f*l));exit}')
+CharAllocW=$(awk \
+	-v bpw=$BookletPageW \
+	-v fbw=$FontBoxW \
+	'BEGIN {printf "%.1f", bpw/fbw;exit}')
+#arbitrarily identified multipliers for head/foot alloc
+headval=$(awk \
+	-v chaw=$CharAllocH \
+	'BEGIN {printf "%.0f", chaw*.08;exit}')
+footval=$(awk \
+	-v chaw=$CharAllocH \
+	'BEGIN {printf "%.0f", chaw*.04;exit}')
+HeaderAlloc=${headval:=8}
+FooterAlloc=${footval:=5}
+ColAllocH=$(( CharAllocH - HeaderAlloc - FooterAlloc ))
+#intending on the behavior of 1em=fontheight, even though in practice it doesnt variate from a standard 16 pts /2 because 2 col, 3*2...? margin something
+ColAllocW=$(awk \
+	-v chaw=$CharAllocW \
+	-v fbh=$FontBoxH \
+	-v bt=$BindingTabNO \
+	'BEGIN {print int( (chaw)/2 - ( (3*2) + (fbh*(bt/2)) ) );exit}')
+if [[ -n $SOURCEFILE ]]; then
+SOURCEwc=($(head -$BOOKCAP $SOURCEFILE|tr '\n' ' '|wc))
+fi
+
+echo TabBlock $TabBlock
+echo TabSize: $TabSize
+echo BindingTabNO: $BindingTabNO
+echo PageH: $PageH
+echo PageW: $PageW
+echo LineSpace: $LineSpace
+echo BookletPageH: $BookletPageH
+echo BookletPageW: $BookletPageW
+echo FontBoxH: $FontBoxH
+echo FontBoxW: $FontBoxW
+echo CharAllocH: $CharAllocH
+echo CharAllocW: $CharAllocW
+echo HeaderAlloc: $HeaderAlloc
+echo FooterAlloc: $FooterAlloc
+echo ColAllocH: $ColAllocH
+echo ColAllocW: $ColAllocW
+echo "Character division:" $(( ${SOURCEwc[2]} / ((ColAllocW*2)*ColAllocH) ))
+echo "Chapters in source to be added:"
+echo "whitespace buffer size:"
+echo "Final intended page size:"
+}
+
+function SeriesTop {
+read -r -t 4 -p "Papers per Sheaf (default 16 if empty):" SheafPapersARG
+BookPages=$((${#conconREF[@]}+(4-(${#conconREF[@]}%4)) )) #generated pages rounded to 4, so every paper has all 4 pages identified
+SheafPapers=${SheafPapersARG:=16}
+SheafRange=$((SheafPapers * 4))
+SheafModulus=$((BookPages % SheafRange)) #sheafmodulus is also the size of the Final Sheaf. which is component to final product
+SheafHarmonics=$(( BookPages/SheafRange )) #sheaf 1 range is all that is needed to generate the rest of the series, harmonically
+UpperBound=$SheafRange
+LowerBound=1
+#===
+for ((trash=0;trash<SheafPapers;trash++)); do #arbitrarily identified series relationship between booklet page and double sided (by whole stack) paper printing
+	TransformSet1+=( $((UpperBound--)) $((LowerBound++)) )
+	TransformSet2+=( $((LowerBound++)) $((UpperBound--)) )
+done
+
+for ((sheafi=1;sheafi<SheafHarmonics;sheafi++)); do
+for ((TShalf=0;TShalf<(SheafRange/2);TShalf++)) do # base harmonic already made, the rest are functions of it. half is in each array
+	TransformSet1+=($((${TransformSet1[$TShalf]} + SheafRange*sheafi)))
+	TransformSet2+=($((${TransformSet2[$TShalf]} + SheafRange*sheafi))) #this TransformSet2 must happen after the entirety of half the printing job is finished and the paper has been fed at the correct orientation.(bottom up and over, 180 turn...somersault and cartwheel)
+done
+done
+
+if ((SheafModulus != 0)); then # FinalSheaf; the sheaf that is not a complete harmonic at the end of the book, equal to pages % sheafrange, earlier contrived to be even
+FinalUpperBound=$BookPages
+FinalLowerBound=$(( (BookPages+1) - SheafModulus))
+for ((finalsheaf=0;finalsheaf<(SheafModulus/4);finalsheaf++)); do
+	TransformSet1+=( $((FinalUpperBound--)) $((FinalLowerBound++)) )
+	TransformSet2+=( $((FinalLowerBound++)) $((FinalUpperBound--)) )
+done
+fi
+}
+
+function PageGen {
+local -i w=0
+while [[ -z "${source[$w]}" ]]; do
+((w++))
+if [[ $w -gt $BOOKCAP ]]; then
+echo "read file empty?"
+exit
+fi
+done
+
+readindex=$w #number to check first line location
+BookName=${EndoBook[$((10#${indexlinearray[$readindex]::3}))]}
+TempBookName=$BookName # first values
+printf '%s' "$BookName/"
+Page=1
+constr=(-1)
+TheWordChapter=" Chapter "
+
+while true; do
+while ((${#conconstr[@]} < 2*ColAllocH)); do
+	if [[ -z ${sourcelinearray[$mapkey]} ]] && (( ${#conconstr[@]} % ColAllocH != ColAllocH - 1)); then # math to find the last line of either column
+		if [[ $readindex -lt $BOOKCAP ]]; then
+			Read
+		else
+			break 2 #the break that finishes whole function
+		fi
+	elif [[ -z ${sourcelinearray[$mapkey]} ]]; then #is last line of column, terminate column on finished sentence
+		conconstr+=("${constr[*]:1}")
+		constr=(-1)
+	elif (( constr+1+${#sourcelinearray[$mapkey]} > ColAllocW )); then #line is full, print and reloop
+		conconstr+=("${constr[*]:1}")
+		if (( constr>ColAllocW )); then printf '%s\n' "constr should never be bigger than page alloc, fail at ${LINENO} check" "${constr[1]}";exit;fi
+		constr=(-1)
+	else #exclusive action of last line or empty source line, build line
+		constr+=("${sourcelinearray[$mapkey]}")
+		((constr+=${#sourcelinearray[$mapkey]}+1)) # method to count string size
+		((mapkey++))
+		((wordcount++))
+	fi
+done #while < 2*ColAllocH
+#==== Page filled, print
+	if ((${#conconstr[@]}==2*ColAllocH)); then
+		 eval "concon$Page=(\"$BookName@$TempBookName\" \"\${conconstr[@]}\")"
+		 conconREF+=("concon$Page[@]")
+		 TempBookName=""
+		 unset conconstr
+		 ((Page++))
+	fi
+done #while true
+
+#=== final page print
+printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}-" #debug
+	 eval "concon$Page=(\"$BookName@$TempBookName\" \"\${conconstr[@]}\")"
+	 conconREF+=("concon$Page[@]")
+	 TempBookName=""
+	 unset conconstr
+}
+
+function Read {
+	mapkey=0
+	awkBook=${EndoBook[$((10#${indexlinearray[$readindex]::3}))]}
+	awkCH=$((10#${indexlinearray[$readindex]:3:3}))
+	VerseNO=${indexlinearray[$readindex]:6:3}
+	sourcelinearray=(\[$((10#$VerseNO))\] ${source[$readindex]})
+	((wordcount--))# added versenumber word
+	((pageconstringcount-=3+${#VerseNO}))
+
+while ((readindex<BOOKCAP)); do #next non-empty line in source
+	((readindex++))
+	if [[ -n ${source[$readindex]} ]]; then
+		break
+	fi
+done
+
+if [[ $BookName != $awkBook ]]; then # new read operations. book change, chapter change, break whole page
+	if [[ -n "${constr[@]}" ]]; then
+	conconstr+=("${constr[*]:1}")
+	fi
+printf '%s' "$awkBook/" #debug
+
+	eval "concon$Page=(\"$BookName@$TempBookName\" \"\${conconstr[@]}\")"
+	conconREF+=("concon$Page[@]")
+	unset conconstr
+	((Page++))
+#new values
+	constr=(-1)
+	TempBookName=$awkBook
+	BookName=$awkBook
+	ChapterNO=1
+#print chapter 1
+	message_length=$((${#TheWordChapter}+2)) #space and size of "1"
+	paddingQU=$(( (ColAllocW - message_length) / 6 ))
+	CHtildes="$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
+	CHBANNERGEN="<div class=\"ChapterHeader\">$CHtildes Chapter $ChapterNO $CHtildes</div>"
+	conconstr+=("$CHBANNERGEN")
+	((pageconstringcount-=${#CHBANNERGEN}))
+
+	elif (( ChapterNO != awkCH )); then
+	ChapterNO=$awkCH
+	message_length=$((${#TheWordChapter}+1+${#ChapterNO}))
+	paddingQU=$(( (ColAllocW - message_length) / 6 ))
+	CHtildes="$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
+	CHBANNERGEN="<div class=\"ChapterHeader\">$CHtildes Chapter $ChapterNO $CHtildes</div>"
+
+	if [[ -n $constr ]]; then # print line before adding chapter header
+		conconstr+=("${constr[*]:1}")
+		constr=(-1)
+	fi
+
+	if (( ${#conconstr[@]} % ColAllocH == ColAllocH - 1 )); then #checking for final line in both columns, or 1 before remainder 0
+		conconstr+=("")
+		constr=($ColAllocW "$CHBANNERGEN") #bignum to trigger line break after being passed back to PageGen
+		((pageconstringcount-=${#CHBANNERGEN}))
+	else # is less than either final column line
+		conconstr+=("$CHBANNERGEN")
+		((pageconstringcount-=${#CHBANNERGEN}))
+	fi
+fi # if book!book/Chapter!chapter
+}
+
+function Cobbler {
+PAGEKEYS=0
+TRANSFORMREFERENCEARRAY=(TransformSet1[@] TransformSet2[@])
+SeriesTop
+
+for SIDE in {0..1}; do
+>$SUBDIR/FINAL$SIDE.html
+
+eval "CurrentTransformCopy=(\"\${${TRANSFORMREFERENCEARRAY[$SIDE]}}\")"
+PAGEKEYS=0
+
+cat <<-EOF >> "$SUBDIR/FINAL$SIDE.html"
+<!DOCTYPE html>
+<head>
+<meta charset="UTF-8">
+<style>
+@page {
+ size: A4 landscape;
+}
+@media print {
+ .a4-page {
+ break-after: page;
+ }
+}
+body {
+ background: #eee;
+}
+.a4-page {
+ background: white;
+ width: 297mm;
+ height: 210mm;
+}
+.wrapper {
+ padding-left: 2%;
+ position: relative;
+ float: left;
+ height: 100%;
+ width: 47%;
+ }
+.wrapper2 {
+ padding-right: 0%;
+ position: relative;
+ float: right;
+ height: 100%;
+ width: 47%;
+ }
+.pageheader {
+ text-align: center;
+ font-size: $((FontBoxH+1))pt;
+ border-bottom: 1px solid;
+ margin-left: 20%;
+ margin-right: 20%;
+}
+.ChapterHeader {
+ font-size: $((FontBoxH+1))pt;
+ display: block;
+ margin: 1pt;
+ font-weight: bold;
+}
+.BookHeader {
+ text-decoration: underline;
+ margin: 2%;
+ text-align: center;
+ display: block;
+ font-family: "DejaVu Sans", Courier, mono;
+ font-size: $((FontBoxH+3))pt;
+}
+.footer {
+ font-size: ${FontBoxH}pt;
+ position: absolute;
+ bottom: 0;
+ text-align: center;
+ width: 100%;
+ margin-bottom: ${FontBoxH}pt;
+}
+table {
+ font-size: ${FontBoxH}pt;
+ line-height: $LineSpace;
+ border-collapse: collapse;
+ width: 100%;
+ border-spacing: 0px;
+ }
+tr {
+ border-collapse: collapse;
+}
+td[is="td1"] {
+ padding: 0px 0px 0px 0px;
+ text-align: justify;
+ font-family: "DejaVu Sans", Courier, mono;
+ border-collapse: collapse;
+ border-right: 1px solid;
+}
+td[is="td2"] {
+ padding:0px 0px 0px 2%;
+ text-align: justify;
+ font-family: "DejaVu Sans", Courier, mono;
+ border-collapse: collapse;
+ border-left: 1px solid;
+}
+</style>
+</head>
+EOF
+
+while [[ $PAGEKEYS -lt ${#CurrentTransformCopy[@]} ]]; do
+	PAGENO1="${CurrentTransformCopy[((PAGEKEYS++))]:-7777}"
+	PAGENO2="${CurrentTransformCopy[((PAGEKEYS++))]:-7777}"
+	eval "Page1=(\"\${${conconREF[((PAGENO1-1))]:-7777}}\")"
+	eval "Page2=(\"\${${conconREF[((PAGENO2-1))]:-7777}}\")"
+	BN1=${Page1[0]%%@*} #array header element data
+	BH1=${Page1[0]##*@}
+	Page1=("${Page1[@]:1}") #slicing out header
+	local -i a1=${#Page1[@]}
+	local -i b1=$(( (a1-(a1/2))*2 )) # smallest even containing $a
+	local -i c1=$((b1/2)) #offset for column 2
+	BN2=${Page2[0]%%@*}
+	BH2=${Page2[0]##*@}
+	Page2=("${Page2[@]:1}")
+	local -i a2=${#Page2[@]}
+	local -i b2=$(( (a2-(a2/2))*2 ))
+	local -i c2=$((b2/2))
+
+	pagecon+=("<div class=\"a4-page\">")
+	#===page1
+	pagecon+=("<div class=\"wrapper\"><div class=\"pageheader\">$BN1</div><div class=\"BookHeader\">$BH1</div><table>")
+	for ((i=0;i<c1;i++)); do
+	pagecon+=("<tr><td is=\"td1\">${Page1[$i]}</td><td is=\"td2\">${Page1[$((i+c1))]}</td></tr>")
+	((pageconstringcount+=$(( ${#Page1[$i]}+${#Page1[$((i+c1))]} )) ))
+	done
+	pagecon+=("</table><div class=\"footer\">$PAGENO1</div></div>")
+	#===page2
+	pagecon+=("<div class=\"wrapper2\"><div class=\"pageheader\">$BN2</div><div class=\"BookHeader\">$BH2</div><table>")
+	for ((i=0;i<c2;i++)); do
+	pagecon+=("<tr><td is=\"td1\">${Page2[$i]}</td><td is=\"td2\">${Page2[$((i+c2))]}</td></tr>")
+	((pageconstringcount+=$(( ${#Page2[$i]}+${#Page2[$((i+c2))]} )) ))
+	done
+	pagecon+=("</table><div class=\"footer\">$PAGENO2</div></div>")
+	pagecon+=("</div>") #a4-page div
+	printf '%s\n' "${pagecon[@]}" >> $SUBDIR/FINAL$SIDE.html
+	unset pagecon
+
+	printf '%s ' "\($PAGENO1:${#Page1[@]} $PAGENO2:${#Page2[@]}\)" >> $LOGFILE #debug
+done #while key<
+done #for 0 1
+
+echo
+echo  ${#conconREF[@]} ${conconREF[-1]} >> $LOGFILE
+}
+
+DOM
+mkdir -p "$SUBDIR"
+PageGen "$@"
+Cobbler
+
+echo 'elapsed seconds' $(($(date +%s)-dateserial))|tee -a $LOGFILE
+echo "sourcewordcount: ${SOURCEwc[1]} wordcount: $wordcount \
+sourcecharcount: ${SOURCEwc[2]} pageconstringcount: $pageconstringcount \
+diff; $((${SOURCEwc[2]}-pageconstringcount))"|tee -a $LOGFILE
+echo set1 ${TransformSet1[@]} >> $LOGFILE
+echo set2 ${TransformSet2[@]} >> $LOGFILE
+echo "readindex/$readindex lastbook/$BookName"
+echo $SUBDIR
