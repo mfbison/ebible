@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 
 #this script produces 2 html files, that can be turned into pdf with (ideally chromes) print preview/save to pdf.
-#those pdfs are then printed separately with all of FINAL0 being printed, then flipping the paper hand over hand, or changing the polarity of the x-axis
+#those pdfs are then printed separately with all of FINAL0 being printed, then flipping the paper hand over hand, or changing the polarity of the x-axis, over the z-axis
 # constr has header element -1 to correctly pace white spaces added to strings
 # element 1 is dedicated to counting the string size, and offset while printing the string itself
 
@@ -16,21 +16,21 @@ SUBDIR=$PROJECTDIRECTORY/$sourceserial-$InputBookName
 BOOKCAP=(31170)
 InputISO=${InputBookName::3}
 mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF || awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF )
-EndoBook=("" "${EndoBook[@]}") # index from 1
-#${EndoBook[$BookNO]/#*@/}
+EndoBook=("" "${EndoBook[@]}") # start index from 1 to match book nums
 INDEXFILE=index.txt
 LOGFILE=$SUBDIR/LOGFILE.txt
 mapfile -t source < $SOURCEFILE
 mapfile -t indexlinearray < $INDEXFILE
-TRANSLATIONSINDEXFILE="translations.csv"
-OTNO=$(awk -k -v str="$InputBookname" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE)
-NTNO=$(awk -k -v str="$InputBookname" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE)
+TRANSLATIONSINDEXFILE="../metadata/translations.csv"
+OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE)
+NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE)
+BookMeta=($(awk -k -v name=$InputBookName 'NR==1 {for(i=1;i<=NF;i++){r[i]=$i}} $2==name {for(i=1;i<=NF;i++){printf "%s#%s\n",r[i],$i}}' $TRANSLATIONSINDEXFILE))
 
-DOM () {
-	echo DOM
+DOM()
+{
 	read -r -t 10 -p "FontBoxH:" FontBoxARG
 	read -r -t 10 -p "LineSpace:" LineSpaceARG
-#	read -r -p "TabSize:" TabSizeArg
+#read -r -p "TabSize:" TabSizeArg
 
 BindingTabNO=0
 # Points==========
@@ -75,9 +75,9 @@ if [[ -n $SOURCEFILE ]]; then
 SOURCEwc=($(head -$BOOKCAP $SOURCEFILE|tr '\n' ' '|wc))
 fi
 
-echo TabBlock $TabBlock
-echo TabSize: $TabSize
-echo BindingTabNO: $BindingTabNO
+#echo TabBlock $TabBlock
+#echo TabSize: $TabSize
+#echo BindingTabNO: $BindingTabNO
 echo PageH: $PageH
 echo PageW: $PageW
 echo LineSpace: $LineSpace
@@ -91,13 +91,14 @@ echo HeaderAlloc: $HeaderAlloc
 echo FooterAlloc: $FooterAlloc
 echo ColAllocH: $ColAllocH
 echo ColAllocW: $ColAllocW
-echo "Character division:" $(( ${SOURCEwc[2]} / ((ColAllocW*2)*ColAllocH) ))
-echo "Chapters in source to be added:"
-echo "whitespace buffer size:"
-echo "Final intended page size:"
+echo "Character division/sim pagecount:" $(( ${SOURCEwc[2]} / ((ColAllocW*2)*ColAllocH) ))
+#echo "Chapters in source to be added:"
+#echo "whitespace buffer size:"
+#echo "Final intended page size:"
 }
 
-function SeriesTop {
+SeriesTop()
+{
 read -r -t 4 -p "Papers per Sheaf (default 16 if empty):" SheafPapersARG
 BookPages=$((${#conconREF[@]}+(4-(${#conconREF[@]}%4)) )) #generated pages rounded to 4, so every paper has all 4 pages identified
 SheafPapers=${SheafPapersARG:=16}
@@ -129,7 +130,8 @@ done
 fi
 }
 
-function PageGen {
+PageGen()
+{
 local -i w=0
 while [[ -z "${source[$w]}" ]]; do
 ((w++))
@@ -153,7 +155,7 @@ while ((${#conconstr[@]} < 2*ColAllocH)); do
 		if [[ $readindex -lt $BOOKCAP ]]; then
 			Read
 		else
-			break 2 #the break that finishes whole function
+			break 2 #the break that finalizes whole function
 		fi
 	elif [[ -z ${sourcelinearray[$mapkey]} ]]; then #is last line of column, terminate column on finished sentence
 		conconstr+=("${constr[*]:1}")
@@ -187,12 +189,13 @@ printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}-" #debug
 	 unset conconstr
 }
 
-function Read {
+Read()
+{
 	mapkey=0
 	awkBook=${EndoBook[$((10#${indexlinearray[$readindex]::3}))]}
-	awkCH=$((10#${indexlinearray[$readindex]:3:3}))
-	VerseNO=${indexlinearray[$readindex]:6:3}
-	sourcelinearray=(\[$((10#$VerseNO))\] ${source[$readindex]})
+	awkCH=$((10#${indexlinearray[$readindex]:3:3})) #slicing serial number and turning it base 10
+	VerseNO=$((10#${indexlinearray[$readindex]:6:3}))
+	sourcelinearray=(\[$VerseNO\] ${source[$readindex]})
 	((wordcount--))# added versenumber word
 	((pageconstringcount-=3+${#VerseNO}))
 
@@ -249,7 +252,8 @@ printf '%s' "$awkBook/" #debug
 fi # if book!book/Chapter!chapter
 }
 
-function Cobbler {
+Cobbler()  #cobble 2 pages/bookletpage, 2 booklet pages/paper
+{
 PAGEKEYS=0
 TRANSFORMREFERENCEARRAY=(TransformSet1[@] TransformSet2[@])
 SeriesTop
@@ -385,6 +389,7 @@ while [[ $PAGEKEYS -lt ${#CurrentTransformCopy[@]} ]]; do
 	((pageconstringcount+=$(( ${#Page2[$i]}+${#Page2[$((i+c2))]} )) ))
 	done
 	pagecon+=("</table><div class=\"footer\">$PAGENO2</div></div>")
+	#===
 	pagecon+=("</div>") #a4-page div
 	printf '%s\n' "${pagecon[@]}" >> $SUBDIR/FINAL$SIDE.html
 	unset pagecon
@@ -405,7 +410,7 @@ Cobbler
 echo 'elapsed seconds' $(($(date +%s)-dateserial))|tee -a $LOGFILE
 echo "sourcewordcount: ${SOURCEwc[1]} wordcount: $wordcount \
 sourcecharcount: ${SOURCEwc[2]} pageconstringcount: $pageconstringcount \
-diff; $((${SOURCEwc[2]}-pageconstringcount))"|tee -a $LOGFILE
+diff: $((${SOURCEwc[2]}-pageconstringcount))"|tee -a $LOGFILE
 echo set1 ${TransformSet1[@]} >> $LOGFILE
 echo set2 ${TransformSet2[@]} >> $LOGFILE
 echo "readindex/$readindex lastbook/$BookName"
