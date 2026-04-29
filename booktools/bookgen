@@ -2,28 +2,29 @@
 
 # constr has header element -1 to correctly pace white spaces added to strings
 # element 1 is dedicated to counting the string size, and offset while printing the string itself
-
+# the index is serialized like 001001001 is Gen 1 1, so it can be offset by 3 for any
+#
 dateserial="$(date +%s)"
-sourceserial="${dateserial::5}"
+sourceserial="${dateserial::5}" # first 5 digits of unix time, or about 30 hours between versions
 PROJECTDIRECTORY=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 SOURCEFILE=$1
-XMLREF=xmlChapterName6.csv
+XMLREFFILE=xmlChapterName6.csv # external book name reference. only has about 180 viable bookname translations
 sourceslice=${SOURCEFILE##*/}
 InputBookName="${sourceslice:4:-4}"
 InputISO=${InputBookName::3}
-SUBDIR=$PROJECTDIRECTORY/$sourceserial-$InputBookName
+SUBDIR=$PROJECTDIRECTORY/$sourceserial/$InputBookName
 INDEXFILE=index.txt
 LOGFILE=$SUBDIR/LOGFILE.txt
 TRANSLATIONSINDEXFILE="../metadata/translations.csv"
 mapfile -t source < $SOURCEFILE
 mapfile -t indexlinearray < $INDEXFILE
 mapfile -t -d $'\n' BookMeta <<< $(awk -k -v name=$InputBookName 'NR==1 {for(i=1;i<=NF;i++){r[i]=$i}} $2==name {for(i=1;i<=NF;i++){printf "%s\n", r[i]"#"$i}}' $TRANSLATIONSINDEXFILE)
-mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF)
-[[ -z $EndoBook ]] && mapfile -t EndoBook < <(awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREF)
+mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
+[[ -z $EndoBook ]] && mapfile -t EndoBook < <(awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
 EndoBook=("" "${EndoBook[@]}") # start index from 1 to match book nums
 OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE)
 NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE)
-LeftToRight=$(if [[ ${BookMeta[26]##*#} == "ltr" ]]; then printf true; else printf false; fi) # every file is either ltr or rtl
+LeftToRight=$([[ ${BookMeta[26]##*#} == "ltr" ]] && printf true ||  printf false) # every file is either ltr or rtl
 ColSwitch=($($LeftToRight && printf "%d %d" 0 1 || printf "%d %d" 1 0))
 BOOKCAP=(31170)
 oIFS="$IFS"
@@ -92,7 +93,7 @@ echo HeaderAlloc: $HeaderAlloc
 echo FooterAlloc: $FooterAlloc
 echo ColAllocH: $ColAllocH
 echo ColAllocW: $ColAllocW
-echo "Character division/sim pagecount:" $(( ${SOURCEwc[2]} / ((ColAllocW*2)*ColAllocH) ))
+echo "Character division/sim pagecount:" $(( ${SOURCEwc[1]} / ((ColAllocW*2)*ColAllocH) ))
 }
 
 SeriesTop()
@@ -144,12 +145,15 @@ BookName=${EndoBook[$((10#${indexlinearray[$readindex]::3}))]}
 TempBookName=$BookName # first values
 printf '%s' "$BookName/"
 Page=1
-constr=(-1)
-TheWordChapter=" Chapter "
+constr=(-1) #a header element to correctly track the whitespace added between words eg word#word#word is 3 words and 2 ws. word is 1 word, 0 whitespace
+TheWordChapter="Chapter"
+message_length=$((${#TheWordChapter}+5)) #2 whitespace and size of 3 dedicated spaces to int "%3d"
+paddingQU=$(( (ColAllocW - message_length) / 6 ))
+CHtildes="$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
 
 while true; do
 while ((${#conconstr[@]} < 2*ColAllocH)); do
-	if [[ -z ${sourcelinearray[$mapkey]} ]] && (( ${#conconstr[@]} % ColAllocH != ColAllocH - 1)); then # math to find the last line of either column
+	if [[ -z ${sourcelinearray[$mapkey]} ]] && (( ${#conconstr[@]} % ColAllocH != ColAllocH - 1)); then # math to find the (not) last line of either column
 		if [[ $readindex -lt $BOOKCAP ]]; then
 			Read
 		else
@@ -180,7 +184,7 @@ done #while < 2*ColAllocH
 done #while true
 
 #=== final page print
-printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}-" #debug
+printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}- PAGE COUNT ${#conconREF[@]}" #debug
 	eval "concon$Page=(\"$BookName@$TempBookName\" \"\${conconstr[@]}\")"
 	conconREF+=("concon$Page[@]")
 	TempBookName=""
@@ -192,10 +196,14 @@ Read()
 	mapkey=0
 	awkBook=${EndoBook[$((10#${indexlinearray[$readindex]::3}))]}
 	awkCH=$((10#${indexlinearray[$readindex]:3:3})) #slicing serial number and turning it base 10
+	if $LeftToRight; then
 	VerseNO="[$((10#${indexlinearray[$readindex]:6:3}))]"
+	else
+	VerseNO="]$([[ $((10#${indexlinearray[$readindex]:6:3})) =~ ([1-9]?)([0-9]?)([0-9]?) ]] && printf ${BASH_REMATCH[3]}${BASH_REMATCH[2]}${BASH_REMATCH[1]})["
+	fi
 	sourcelinearray=($VerseNO ${source[$readindex]})
 	((wordcount--))# added versenumber word
-	((pageconstringcount-=3+${#VerseNO}))
+	((pageconstringcount-=1+${#VerseNO}))
 
 while ((readindex<BOOKCAP)); do #next non-empty line in source
 	((readindex++))
@@ -220,19 +228,13 @@ printf '%s' "$awkBook/" #debug
 	BookName=$awkBook
 	ChapterNO=1
 #print chapter 1
-	message_length=$((${#TheWordChapter}+2)) #space and size of "1"
-	paddingQU=$(( (ColAllocW - message_length) / 6 ))
-	CHtildes="$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
-	CHBANNERGEN="<div class=\"ChapterHeader\">$CHtildes Chapter $ChapterNO $CHtildes</div>"
+	CHBANNERGEN="$($LeftToRight && printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>" || printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>"|rev)"
 	conconstr+=("$CHBANNERGEN")
 	((pageconstringcount-=${#CHBANNERGEN}))
 
 	elif (( ChapterNO != awkCH )); then
 	ChapterNO=$awkCH
-	message_length=$((${#TheWordChapter}+1+${#ChapterNO}))
-	paddingQU=$(( (ColAllocW - message_length) / 6 ))
-	CHtildes="$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
-	CHBANNERGEN="<div class=\"ChapterHeader\">$CHtildes Chapter $ChapterNO $CHtildes</div>"
+	CHBANNERGEN="$($LeftToRight && printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>" || printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>"|rev)"
 
 	if [[ -n $constr ]]; then # print line before adding chapter header
 		conconstr+=("${constr[*]:1}")
@@ -285,18 +287,18 @@ body {
  height: 210mm;
 }
 .wrapper${ColSwitch[0]} {
- padding-left: 2%;
+ padding: 0% 2% 0% 2%;
  position: relative;
  float: left;
  height: 100%;
- width: 47%;
+ width: 45%;
  }
 .wrapper${ColSwitch[1]} {
- padding-right: 0%;
+ padding: 0% 2% 0% 2%;
  position: relative;
  float: right;
  height: 100%;
- width: 47%;
+ width: 45%;
  }
 .pageheader {
  text-align: center;
@@ -316,7 +318,7 @@ body {
  margin: 2%;
  text-align: center;
  display: block;
- font-family: ${BookMeta[30]},"DejaVu Sans", Courier, mono;
+ font-family: ${BookMeta[28]##*#},"DejaVu Sans", Courier, mono;
  font-size: $((FontBoxH+3))pt;
 }
 .footer {
@@ -327,44 +329,40 @@ body {
  width: 100%;
  margin-bottom: ${FontBoxH}pt;
 }
-
 table[is="table${ColSwitch[0]}"] {
+ width: 50%;
  float: left;
- font-size: 7pt;
- line-height: 1.2;
- border-collapse: collapse;
- width: 50%;
- border-spacing: 0px;
- }
-table[is="table${ColSwitch[1]}"] {
- float: right;
- font-size: 7pt;
- line-height: 1.2;
- border-collapse: collapse;
- width: 50%;
- border-spacing: 0px;
- }
-table {
  font-size: ${FontBoxH}pt;
  line-height: $LineSpace;
  border-collapse: collapse;
- width: 100%;
  border-spacing: 0px;
  }
+table[is="table${ColSwitch[1]}"] {
+ width: 50%;
+ float: right;
+ font-size: ${FontBoxH}pt;
+ line-height: $LineSpace;
+ border-collapse: collapse;
+ border-spacing: 0px;
+ }
+#table {
+# border-collapse: collapse;
+# width: 100%;
+# border-spacing: 0px;
+# }
 tr {
  border-collapse: collapse;
 }
-td[is="td1"] {
- padding: 0px 0px 0px 0px;
- text-align: $(if $LeftToRight; then printf justify;else printf right;fi);
- font-family: ${BookMeta[30]}, "DejaVu Sans", Courier, mono;
+td[is="td${ColSwitch[0]}"] {
+ padding: 0px 2% 0px 0px;
+ text-align: $($LeftToRight && printf justify || printf right);
+ font-family: ${BookMeta[28]##*#}, "DejaVu Sans", Courier, mono;
  border-collapse: collapse;
- border-right: 1px solid;
 }
-td[is="td2"] {
+td[is="td${ColSwitch[1]}"] {
  padding:0px 0px 0px 2%;
- text-align: $(if $LeftToRight; then printf justify;else printf right;fi);
- font-family: ${BookMeta[30]},"DejaVu Sans", Courier, mono;
+ text-align: $($LeftToRight && printf justify || printf right);
+ font-family: ${BookMeta[28]##*#},"DejaVu Sans", Courier, mono;
  border-collapse: collapse;
  border-left: 1px solid;
 }
@@ -390,64 +388,64 @@ while [[ $PAGEKEYS -lt ${#CurrentTransformCopy[@]} ]]; do
 	local -i b2=$(( (a2-(a2/2))*2 ))
 	local -i c2=$((b2/2))
 
-if ! $LeftToRight; then
-	for i1 in ${!Page1[@]}; do
- Page1[$i1]="$([[ "${Page1[$i1]}" =~ $CHreg ]] && printf '%s' "${Page1[$i1]}" || printf '%s' "${Page1[$i1]}"|rev)"
-	done
-	for i2 in ${!Page2[@]}; do
- Page2[$i2]="$([[ "${Page2[$i2]}" =~ $CHreg ]] && printf '%s' "${Page2[$i2]}" || printf '%s' "${Page2[$i2]}"|rev)"
-	done
+if ! $LeftToRight; then #source RTL text is given LTR, this is the text reversal
+	IFS=$'\n' Page1=($(printf '%s\n' ${Page1[@]}|rev))
+	IFS=$'\n' Page2=($(printf '%s\n' ${Page2[@]}|rev))
 fi
 
 	pagecon+=("<div class=\"a4-page\">")
 	#===page1
 	pagecon+=("<div class=\"wrapper0\"><div class=\"pageheader\">$BN1</div><div class=\"BookHeader\">$BH1</div><table is=\"table0\">")
 	for ((i=0;i<c1;i++)); do
-	pagecon+=("<tr><td is=\"td1\">${Page1[$i]}</td></tr>")
+	pagecon+=("<tr><td is=\"td0\">${Page1[$i]}</td></tr>")
 	done
 	pagecon+=("</table><table is=\"table1\"")
 	for ((i=0;i<c1;i++)); do
-	pagecon+=("<tr><td is=\"td2\">${Page1[$((i+c1))]}</td></tr>")
+	pagecon+=("<tr><td is=\"td1\">${Page1[$((i+c1))]}</td></tr>")
 	done
 	((pageconstringcount+=$(( ${#Page1[$i]}+${#Page1[$((i+c1))]} )) ))
 	pagecon+=("</table><div class=\"footer\">$PAGENO1</div></div>")
 	#===page2
 	pagecon+=("<div class=\"wrapper1\"><div class=\"pageheader\">$BN2</div><div class=\"BookHeader\">$BH2</div><table is=\"table0\">")
 	for ((i=0;i<c2;i++)); do
-	pagecon+=("<tr><td is=\"td1\">${Page2[$i]}</td></tr>")
+	pagecon+=("<tr><td is=\"td0\">${Page2[$i]}</td></tr>")
 	done
 	pagecon+=("</table><table is=\"table1\"")
 	for ((i=0;i<c2;i++)); do
-	pagecon+=("<tr><td is=\"td2\">${Page2[$((i+c2))]}</td></tr>")
+	pagecon+=("<tr><td is=\"td1\">${Page2[$((i+c2))]}</td></tr>")
 	done
 	((pageconstringcount+=$(( ${#Page2[$i]}+${#Page2[$((i+c2))]} )) ))
 	pagecon+=("</table><div class=\"footer\">$PAGENO2</div></div>")
 	#===
 	pagecon+=("</div>") #a4-page div
+
 	printf '%s\n' "${pagecon[@]}" >> $SUBDIR/FINAL$SIDE.html
 	unset pagecon
 
 	printf '%s ' "\($PAGENO1:${#Page1[@]} $PAGENO2:${#Page2[@]}\)" >> $LOGFILE #debug
+
 done #while key<
 done #for 0 1
-
-echo
-echo  ${#conconREF[@]} ${conconREF[-1]} >> $LOGFILE
 }
 
+#=========== main
 DOM
 mkdir -p "$SUBDIR"
 PageGen "$@"
 Cobbler
-if ((wordcount != ${SOURCEwc[1]})); then
+
+#============ DEBUG
+echo
+if ((wordcount != ${SOURCEwc[0]})); then
 	echo "SOURCE WORD COUNT DOES NOT MATCH, forcefully cleaning files to prevent perverted output"
 	echo "check source material for \* or \~ characters"
-	rm -r $SUBDIR
+	rm -r $SUBDIR/FINAL*
 fi
+echo  ${#conconREF[@]} ${conconREF[-1]} >> $LOGFILE
 echo 'elapsed seconds' $(($(date +%s)-dateserial))|tee -a $LOGFILE
-echo "sourcewordcount: ${SOURCEwc[1]} wordcount: $wordcount \
-sourcecharcount: ${SOURCEwc[2]} pageconstringcount: $pageconstringcount \
-diff: $((${SOURCEwc[2]}-pageconstringcount))"|tee -a $LOGFILE
+echo "sourcewordcount: ${SOURCEwc[0]} wordcount: $wordcount \
+sourcecharcount: ${SOURCEwc[1]} pageconstringcount: $pageconstringcount \
+diff: $((${SOURCEwc[1]}-pageconstringcount))"|tee -a $LOGFILE
 echo set1 ${TransformSet1[@]} >> $LOGFILE
 echo set2 ${TransformSet2[@]} >> $LOGFILE
 echo "readindex/$readindex lastbook/$BookName"
