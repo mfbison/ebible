@@ -1,19 +1,19 @@
 #!/usr/bin/env bash
 
-# constr has header element -1 to correctly pace white spaces added to strings
-# element 1 is dedicated to counting the string size, and offset while printing the string itself
-# the index is serialized like 001001001 is Gen 1 1, so it can be offset by 3 for any
-#
+# This script creates 2 html files, which are to be turned into PDFs with (preferably Chrome's) print preview
+# 	afterward, all of pdf0 is printed, flipped hand over fist/x-axis 180 over z-axis, placed back into the printer
+# 	and then all of pdf1 is printed
+
 dateserial="$(date +%s)"
-sourceserial="${dateserial::5}" # first 5 digits of unix time, or about 30 hours between versions
+sourceserial="${dateserial::5}" #first 5 digits of unix time, or about 30 hours between versions
 PROJECTDIRECTORY=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
 SOURCEFILE=$1
-XMLREFFILE=xmlChapterName6.csv # external book name reference. only has about 180 viable bookname translations
+XMLREFFILE=xmlChapterName6.csv #external book name reference. only has about 180 viable bookname translations
 sourceslice=${SOURCEFILE##*/}
 InputBookName="${sourceslice:4:-4}"
 InputISO=${InputBookName::3}
 SUBDIR=$PROJECTDIRECTORY/$sourceserial/$InputBookName
-INDEXFILE=index.txt
+INDEXFILE=index.txt #the index is serialized like 001001001 is Gen 1 1, so it can be offset by 3 for any
 LOGFILE=$SUBDIR/LOGFILE.txt
 TRANSLATIONSINDEXFILE="../metadata/translations.csv"
 mapfile -t source < $SOURCEFILE
@@ -21,19 +21,13 @@ mapfile -t indexlinearray < $INDEXFILE
 mapfile -t -d $'\n' BookMeta <<< $(awk -k -v name=$InputBookName 'NR==1 {for(i=1;i<=NF;i++){r[i]=$i}} $2==name {for(i=1;i<=NF;i++){printf "%s\n", r[i]"#"$i}}' $TRANSLATIONSINDEXFILE)
 mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
 [[ -z $EndoBook ]] && mapfile -t EndoBook < <(awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
-EndoBook=("" "${EndoBook[@]}") # start index from 1 to match book nums
+EndoBook=("" "${EndoBook[@]}") #start index from 1 to match book nums
 OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE)
 NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE)
 LeftToRight=$([[ ${BookMeta[26]##*#} == "ltr" ]] && printf true ||  printf false) # every file is either ltr or rtl
-ColSwitch=($($LeftToRight && printf "%d %d" 0 1 || printf "%d %d" 1 0))
+ColSwitch=($($LeftToRight && printf "%d %d" 0 1 || printf "%d %d" 1 0)) #order the left and right elements in css
 BOOKCAP=(31170)
 oIFS="$IFS"
-
-if ! $LeftToRight;then
-echo "script does not correctly handle anything but left-to-right languages"
-echo $LeftToRight - ${BookMeta[26]}
-# exit
-fi
 
 DOM()
 {
@@ -140,8 +134,8 @@ exit
 fi
 done
 
-readindex=$w #number to check first line location
-BookName=${EndoBook[$((10#${indexlinearray[$readindex]::3}))]}
+READKEY=$w #number to check first line location
+BookName=${EndoBook[$((10#${indexlinearray[$READKEY]::3}))]}
 TempBookName=$BookName # first values
 printf '%s' "$BookName/"
 Page=1
@@ -153,23 +147,23 @@ CHtildes="$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
 
 while true; do
 while ((${#conconstr[@]} < 2*ColAllocH)); do
-	if [[ -z ${sourcelinearray[$mapkey]} ]] && (( ${#conconstr[@]} % ColAllocH != ColAllocH - 1)); then # math to find the (not) last line of either column
-		if [[ $readindex -lt $BOOKCAP ]]; then
+	if [[ -z ${sourcelinearray[$MAPKEY]} ]] && (( ${#conconstr[@]} % ColAllocH != ColAllocH - 1)); then # math to find the (not) last line of either column
+		if [[ $READKEY -lt $BOOKCAP ]]; then
 			Read
 		else
 			break 2 #the break that finalizes whole function
 		fi
-	elif [[ -z ${sourcelinearray[$mapkey]} ]]; then #is last line of column, terminate column on finished sentence
+	elif [[ -z ${sourcelinearray[$MAPKEY]} ]]; then #is last line of column, terminate column on finished sentence
 		conconstr+=("${constr[*]:1}")
 		constr=(-1)
-	elif (( constr+1+${#sourcelinearray[$mapkey]} > ColAllocW )); then #line is full, print and reloop
+	elif (( constr+1+${#sourcelinearray[$MAPKEY]} > ColAllocW )); then #line is full, print and reloop
 		conconstr+=("${constr[*]:1}")
 		if (( constr>ColAllocW )); then printf '%s\n' "constr should never be bigger than page alloc, fail at ${LINENO} check" "${constr[1]}";exit;fi
 		constr=(-1)
 	else # ! last line ! empty source line. build line
-		constr+=("${sourcelinearray[$mapkey]}")
-		((constr+=${#sourcelinearray[$mapkey]}+1)) # method to count string size
-		((mapkey++))
+		constr+=("${sourcelinearray[$MAPKEY]}")
+		((constr+=${#sourcelinearray[$MAPKEY]}+1)) # method to count string size
+		((MAPKEY++))
 		((wordcount++))
 	fi
 done #while < 2*ColAllocH
@@ -193,21 +187,21 @@ printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}- PAGE COUNT ${#conconREF[@]}"
 
 Read()
 {
-	mapkey=0
-	awkBook=${EndoBook[$((10#${indexlinearray[$readindex]::3}))]}
-	awkCH=$((10#${indexlinearray[$readindex]:3:3})) #slicing serial number and turning it base 10
+	MAPKEY=0
+	awkBook=${EndoBook[$((10#${indexlinearray[$READKEY]::3}))]}
+	awkCH=$((10#${indexlinearray[$READKEY]:3:3})) #slicing serial number and turning it base 10
 	if $LeftToRight; then
-	VerseNO="[$((10#${indexlinearray[$readindex]:6:3}))]"
+	VerseNO="[$((10#${indexlinearray[$READKEY]:6:3}))]"
 	else
-	VerseNO="]$([[ $((10#${indexlinearray[$readindex]:6:3})) =~ ([1-9]?)([0-9]?)([0-9]?) ]] && printf ${BASH_REMATCH[3]}${BASH_REMATCH[2]}${BASH_REMATCH[1]})["
+	VerseNO="]$([[ $((10#${indexlinearray[$READKEY]:6:3})) =~ ([1-9]?)([0-9]?)([0-9]?) ]] && printf ${BASH_REMATCH[3]}${BASH_REMATCH[2]}${BASH_REMATCH[1]})["
 	fi
-	sourcelinearray=($VerseNO ${source[$readindex]})
+	sourcelinearray=($VerseNO ${source[$READKEY]})
 	((wordcount--))# added versenumber word
 	((pageconstringcount-=1+${#VerseNO}))
 
-while ((readindex<BOOKCAP)); do #next non-empty line in source
-	((readindex++))
-	if [[ -n ${source[$readindex]} ]]; then
+while ((READKEY<BOOKCAP)); do #next non-empty line in source
+	((READKEY++))
+	if [[ -n ${source[$READKEY]} ]]; then
 		break
 	fi
 done
@@ -245,14 +239,14 @@ printf '%s' "$awkBook/" #debug
 		conconstr+=("")
 		constr=($ColAllocW "$CHBANNERGEN") #bignum to trigger line break after being passed back to PageGen
 		((pageconstringcount-=${#CHBANNERGEN}))
-	else # is less than either final column line
+	else # is not either final column line
 		conconstr+=("$CHBANNERGEN")
 		((pageconstringcount-=${#CHBANNERGEN}))
 	fi
 fi # if book!book/Chapter!chapter
 }
 
-Cobbler()  #cobble 2 pages/bookletpage, 2 booklet pages/paper
+Cobbler()  #cobble 2 bookletspages/page, 2 pages/paper
 {
 PAGEKEYS=0
 TRANSFORMREFERENCEARRAY=(TransformSet1[@] TransformSet2[@])
@@ -433,7 +427,6 @@ DOM
 mkdir -p "$SUBDIR"
 PageGen "$@"
 Cobbler
-
 #============ DEBUG
 echo
 if ((wordcount != ${SOURCEwc[0]})); then
@@ -448,5 +441,5 @@ sourcecharcount: ${SOURCEwc[1]} pageconstringcount: $pageconstringcount \
 diff: $((${SOURCEwc[1]}-pageconstringcount))"|tee -a $LOGFILE
 echo set1 ${TransformSet1[@]} >> $LOGFILE
 echo set2 ${TransformSet2[@]} >> $LOGFILE
-echo "readindex/$readindex lastbook/$BookName"
+echo "READKEY/$READKEY lastbook/$BookName"
 echo $SUBDIR
