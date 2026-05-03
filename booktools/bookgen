@@ -18,21 +18,31 @@ LOGFILE=$SUBDIR/LOGFILE.txt
 TRANSLATIONSINDEXFILE="../metadata/translations.csv"
 mapfile -t source < $SOURCEFILE
 mapfile -t indexlinearray < $INDEXFILE
+oIFS="$IFS"
+
+INIT()
+{
+# TODO help/select bible, values, font
 mapfile -t -d $'\n' BookMeta <<< $(awk -k -v name=$InputBookName 'NR==1 {for(i=1;i<=NF;i++){r[i]=$i}} $2==name {for(i=1;i<=NF;i++){printf "%s\n", r[i]"#"$i}}' $TRANSLATIONSINDEXFILE)
 mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
 [[ -z $EndoBook ]] && mapfile -t EndoBook < <(awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
 EndoBook=("" "${EndoBook[@]}") #start index from 1 to match book nums
-OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE)
-NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE)
+IFS="@" read -r FontLink FontAvgW <<< $(awk -v FS=$'\t' -v fw="${BookMeta[28]##*#}" '$1==fw {print $2"@"$3}' link_font.tsv)
+OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE) # unused
+NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE) # unused
 LeftToRight=$([[ ${BookMeta[26]##*#} == "ltr" ]] && printf true ||  printf false) # every file is either ltr or rtl
 ColSwitch=($($LeftToRight && printf "%d %d" 0 1 || printf "%d %d" 1 0)) #order the left and right elements in css
-BOOKCAP=(31170)
-oIFS="$IFS"
+BOOKCAP=(31170) #TODO
+FontFormat
+printf "%s\n" "${BookMeta[@]/\#/: }"|cat -n
+#menu
+# read -r -t 4 -p "Papers per Sheaf (default 16 if empty):" SheafPapersARG
+}
 
 DOM()
 {
-	read -r -t 10 -p "FontBoxH:" FontBoxARG
-	read -r -t 10 -p "LineSpace:" LineSpaceARG
+	read -r -t 30 -p "FontBoxHeight(points, default 7):" FontBoxARG
+	read -r -t 30 -p "LineSpacing(default 1.2):" LineSpaceARG
 
 BindingTabNO=0
 # Points==========
@@ -42,8 +52,9 @@ BookletPageH=$PageW
 BookletPageW=$((PageH/2))
 FontBoxH=${FontBoxARG:=7}
 FontBoxW=$(awk \
-	-v Fb=$FontBoxH \
-	'BEGIN {printf "%.1f", Fb*.6;exit}') #.65 is the hardcoded assumption of font width to font height. this script isnt reactive enough to satisfy curious font standards
+	-v fbh=$FontBoxH \
+	-v faw=${FontAvgW:=.5} \
+	'BEGIN {printf "%.2f", fbh*faw;exit}') #.5 is the hardcoded assumption of font width to font height. this script isnt reactive enough to satisfy curious font standards
 
 # Characters========
 LineSpace=${LineSpaceARG:=1.2}
@@ -69,7 +80,7 @@ ColAllocW=$(awk \
 	-v chaw=$CharAllocW \
 	-v fbh=$FontBoxH \
 	-v bt=$BindingTabNO \
-	'BEGIN {print int( (chaw)/2 - ( (3*2) + (fbh*(bt/2)) ) );exit}') #intending on the behavior of 1em=fontheight, even though in practice it doesnt vary from a standard 16 pts /2 because 2 col, 3*2...? margin something
+	'BEGIN {print int( (chaw - ( (3*2) + (fbh*(bt/2)) ))/2 );exit}') #intending on the behavior of 1em=fontheight, even though in practice it doesnt vary from a standard 16 pts /2 because 2 col, 3*2...? 3 borders per page i think
 if [[ -n $SOURCEFILE ]]; then
 SOURCEwc=($(head -$BOOKCAP $SOURCEFILE|tr '\n' ' '|wc -wm))
 fi
@@ -81,6 +92,7 @@ echo BookletPageH: $BookletPageH
 echo BookletPageW: $BookletPageW
 echo FontBoxH: $FontBoxH
 echo FontBoxW: $FontBoxW
+echo FontAvgW: "$FontAvgW"
 echo CharAllocH: $CharAllocH
 echo CharAllocW: $CharAllocW
 echo HeaderAlloc: $HeaderAlloc
@@ -88,11 +100,11 @@ echo FooterAlloc: $FooterAlloc
 echo ColAllocH: $ColAllocH
 echo ColAllocW: $ColAllocW
 echo "Character division/sim pagecount:" $(( ${SOURCEwc[1]} / ((ColAllocW*2)*ColAllocH) ))
+[[ -z "$FontLink$FontAvgW" ]] && echo "font not currently supported. assuming an avg width of 0.6. the browser may still load its own"
 }
 
 SeriesTop()
 {
-read -r -t 4 -p "Papers per Sheaf (default 16 if empty):" SheafPapersARG
 BookPages=$((${#conconREF[@]}+(4-(${#conconREF[@]}%4)) )) #generated pages rounded to 4, so every paper has all 4 pages identified
 SheafPapers=${SheafPapersARG:=16}
 SheafRange=$((SheafPapers * 4))
@@ -143,7 +155,7 @@ constr=(-1) #a header element to correctly track the whitespace added between wo
 TheWordChapter="Chapter"
 message_length=$((${#TheWordChapter}+5)) #2 whitespace and size of 3 dedicated spaces to int "%3d"
 paddingQU=$(( (ColAllocW - message_length) / 6 ))
-CHtildes="$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
+CHtildes="~~~" # "$(for((i=0;i<paddingQU;i++));do printf '%s' \~; done)"
 
 while true; do
 while ((${#conconstr[@]} < 2*ColAllocH)); do
@@ -187,17 +199,17 @@ printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}- PAGE COUNT ${#conconREF[@]}"
 
 Read()
 {
-	MAPKEY=0
-	awkBook=${EndoBook[$((10#${indexlinearray[$READKEY]::3}))]}
-	awkCH=$((10#${indexlinearray[$READKEY]:3:3})) #slicing serial number and turning it base 10
-	if $LeftToRight; then
-	VerseNO="[$((10#${indexlinearray[$READKEY]:6:3}))]"
-	else
-	VerseNO="]$([[ $((10#${indexlinearray[$READKEY]:6:3})) =~ ([1-9]?)([0-9]?)([0-9]?) ]] && printf ${BASH_REMATCH[3]}${BASH_REMATCH[2]}${BASH_REMATCH[1]})["
-	fi
-	sourcelinearray=($VerseNO ${source[$READKEY]})
-	((wordcount--))# added versenumber word
-	((pageconstringcount-=1+${#VerseNO}))
+MAPKEY=0
+awkBook=${EndoBook[$((10#${indexlinearray[$READKEY]::3}))]}
+awkCH=$((10#${indexlinearray[$READKEY]:3:3})) #slicing serial number and turning it base 10
+if $LeftToRight; then
+VerseNO="[$((10#${indexlinearray[$READKEY]:6:3}))]"
+else
+VerseNO="]$([[ $((10#${indexlinearray[$READKEY]:6:3})) =~ (.?)(.?)(.) ]] && printf ${BASH_REMATCH[3]}${BASH_REMATCH[2]}${BASH_REMATCH[1]})["
+fi
+sourcelinearray=($VerseNO ${source[$READKEY]})
+((wordcount--))# debug. added versenumber word
+((pageconstringcount-=1+${#VerseNO})) #debug
 
 while ((READKEY<BOOKCAP)); do #next non-empty line in source
 	((READKEY++))
@@ -222,13 +234,13 @@ printf '%s' "$awkBook/" #debug
 	BookName=$awkBook
 	ChapterNO=1
 #print chapter 1
-	CHBANNERGEN="$($LeftToRight && printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>" || printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>"|rev)"
+	CHBANNERGEN="$($LeftToRight && printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes" $ChapterNO "$CHtildes</div>" || printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>"|rev)"
 	conconstr+=("$CHBANNERGEN")
 	((pageconstringcount-=${#CHBANNERGEN}))
 
 	elif (( ChapterNO != awkCH )); then
 	ChapterNO=$awkCH
-	CHBANNERGEN="$($LeftToRight && printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>" || printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>"|rev)"
+	CHBANNERGEN="$($LeftToRight && printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes" $ChapterNO "$CHtildes</div>" || printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>"|rev)"
 
 	if [[ -n $constr ]]; then # print line before adding chapter header
 		conconstr+=("${constr[*]:1}")
@@ -264,6 +276,12 @@ cat <<-EOF >> "$SUBDIR/FINAL$SIDE.html"
 <head>
 <meta charset="UTF-8">
 <style>
+@font-face {
+ font-family: '${BookMeta[28]##*#}'; /* Name to use in CSS (case-sensitive!) */
+ src: url('$FontLink') format('truetype'); /* Path to .ttf file + format hint */
+ font-weight: normal; /* Default weight (400) */
+ font-style: normal; /* Default style (normal) */
+}
 @page {
  size: A4 landscape;
 }
@@ -423,17 +441,18 @@ done #for 0 1
 }
 
 #=========== main
+INIT
 DOM
 mkdir -p "$SUBDIR"
 PageGen "$@"
 Cobbler
 #============ DEBUG
 echo
-if ((wordcount != ${SOURCEwc[0]})); then
-	echo "SOURCE WORD COUNT DOES NOT MATCH, forcefully cleaning files to prevent perverted output"
-	echo "check source material for \* or \~ characters"
-	rm -r $SUBDIR/FINAL*
-fi
+#if ((wordcount != ${SOURCEwc[0]})); then
+#	echo "SOURCE WORD COUNT DOES NOT MATCH, forcefully cleaning files to prevent perverted output"
+#	echo "check source material for \* or \~ characters"
+#	rm -r $SUBDIR/FINAL*
+#fi
 echo  ${#conconREF[@]} ${conconREF[-1]} >> $LOGFILE
 echo 'elapsed seconds' $(($(date +%s)-dateserial))|tee -a $LOGFILE
 echo "sourcewordcount: ${SOURCEwc[0]} wordcount: $wordcount \
