@@ -3,7 +3,6 @@
 # This script creates 2 html files, which are to be turned into PDFs with (preferably Chrome's) print preview
 # 	afterward, all of pdf0 is printed, flipped hand over fist/x-axis 180 over z-axis, placed back into the printer
 # 	and then all of pdf1 is printed
-
 dateserial="$(date +%s)"
 sourceserial="${dateserial::5}" #first 5 digits of unix time, or about 30 hours between versions
 PROJECTDIRECTORY=$( cd -- "$( dirname -- "${BASH_SOURCE[0]}" )" &> /dev/null && pwd )
@@ -18,23 +17,24 @@ LOGFILE=$SUBDIR/LOGFILE.txt
 TRANSLATIONSINDEXFILE="../metadata/translations.csv"
 mapfile -t source < $SOURCEFILE
 mapfile -t indexlinearray < $INDEXFILE
-oIFS="$IFS"
+set -f #stop file expansion from * character in strings
 
 INIT()
 {
 # TODO help/select bible, values, font
-mapfile -t -d $'\n' BookMeta <<< $(awk -k -v name=$InputBookName 'NR==1 {for(i=1;i<=NF;i++){r[i]=$i}} $2==name {for(i=1;i<=NF;i++){printf "%s\n", r[i]"#"$i}}' $TRANSLATIONSINDEXFILE)
+mapfile -t BookMeta < <(awk -k -v name=$InputBookName 'NR==1 {for(i=1;i<=NF;i++){r[i]=$i}} $2==name {for(i=1;i<=NF;i++){printf "%s\n", r[i]"#"$i}}' $TRANSLATIONSINDEXFILE)
 mapfile -t EndoBook < <(awk -k -v iso="$InputISO" '($4==iso||$2==iso) && ($6==1||$6==2) {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
 [[ -z $EndoBook ]] && mapfile -t EndoBook < <(awk -k '$2=="eng" && $6==1 {for(i=7;i<=NF;i++){printf "%s\n",$i};exit}' $XMLREFFILE)
 EndoBook=("" "${EndoBook[@]}") #start index from 1 to match book nums
-IFS="@" read -r FontLink FontAvgW <<< $(awk -v FS=$'\t' -v fw="${BookMeta[28]##*#}" '$1==fw {print $2"@"$3}' link_font.tsv)
-OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE) # unused
-NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE) # unused
+IFS="@" read -r FontLink FontAvgW < <(awk -v FS=$'\t' -v fw="${BookMeta[28]##*#}" '$1==fw {print $2"@"$3}' link_font.tsv)
+#OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE) # unused
+#NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE) # unused
 LeftToRight=$([[ ${BookMeta[26]##*#} == "ltr" ]] && printf true ||  printf false) # every file is either ltr or rtl
 ColSwitch=($($LeftToRight && printf "%d %d" 0 1 || printf "%d %d" 1 0)) #order the left and right elements in css
 BOOKCAP=(31170) #TODO
-FontFormat
+declare -A FontMime=([ttf]="truetype" [otf]="opentype" [woff]="woff" [woff2]="woff")
 printf "%s\n" "${BookMeta[@]/\#/: }"|cat -n
+printf "%s\n" "${FontMime[${FontLink##*.}]}"
 #menu
 # read -r -t 4 -p "Papers per Sheaf (default 16 if empty):" SheafPapersARG
 }
@@ -174,7 +174,7 @@ while ((${#conconstr[@]} < 2*ColAllocH)); do
 		constr=(-1)
 	else # ! last line ! empty source line. build line
 		constr+=("${sourcelinearray[$MAPKEY]}")
-		((constr+=${#sourcelinearray[$MAPKEY]}+1)) # method to count string size
+		((constr+=${#sourcelinearray[$MAPKEY]}+1)) #method to count string size
 		((MAPKEY++))
 		((wordcount++))
 	fi
@@ -218,7 +218,7 @@ while ((READKEY<BOOKCAP)); do #next non-empty line in source
 	fi
 done
 
-if [[ $BookName != $awkBook ]]; then # new read operations. book change, chapter change, break whole page
+if [[ $BookName != $awkBook ]]; then #new read operations. book change, chapter change, break whole page
 	if [[ -n "${constr[@]}" ]]; then
 	conconstr+=("${constr[*]:1}")
 	fi
@@ -242,7 +242,7 @@ printf '%s' "$awkBook/" #debug
 	ChapterNO=$awkCH
 	CHBANNERGEN="$($LeftToRight && printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes" $ChapterNO "$CHtildes</div>" || printf '%s %3d %s' "<div class=\"ChapterHeader\">$CHtildes Chapter" $ChapterNO "$CHtildes</div>"|rev)"
 
-	if [[ -n $constr ]]; then # print line before adding chapter header
+	if [[ -n $constr ]]; then #print line before adding chapter header
 		conconstr+=("${constr[*]:1}")
 		constr=(-1)
 	fi
@@ -251,18 +251,17 @@ printf '%s' "$awkBook/" #debug
 		conconstr+=("")
 		constr=($ColAllocW "$CHBANNERGEN") #bignum to trigger line break after being passed back to PageGen
 		((pageconstringcount-=${#CHBANNERGEN}))
-	else # is not either final column line
+	else #is not either final column line
 		conconstr+=("$CHBANNERGEN")
 		((pageconstringcount-=${#CHBANNERGEN}))
 	fi
-fi # if book!book/Chapter!chapter
+fi #if book!book/Chapter!chapter
 }
 
 Cobbler()  #cobble 2 bookletspages/page, 2 pages/paper
 {
 PAGEKEYS=0
 TRANSFORMREFERENCEARRAY=(TransformSet1[@] TransformSet2[@])
-CHreg='<div.*</div>'
 SeriesTop
 
 for SIDE in {0..1}; do
@@ -278,7 +277,7 @@ cat <<-EOF >> "$SUBDIR/FINAL$SIDE.html"
 <style>
 @font-face {
  font-family: '${BookMeta[28]##*#}'; /* Name to use in CSS (case-sensitive!) */
- src: url('$FontLink') format('truetype'); /* Path to .ttf file + format hint */
+ src: url('../../$FontLink') format('${FontMime[${FontLink##*.}]}'); /* Path to .ttf file + format hint */
  font-weight: normal; /* Default weight (400) */
  font-style: normal; /* Default style (normal) */
 }
@@ -434,8 +433,7 @@ fi
 	printf '%s\n' "${pagecon[@]}" >> $SUBDIR/FINAL$SIDE.html
 	unset pagecon
 
-	printf '%s ' "\($PAGENO1:${#Page1[@]} $PAGENO2:${#Page2[@]}\)" >> $LOGFILE #debug
-
+	printf '%s ' "($PAGENO1:${#Page1[@]} $PAGENO2:${#Page2[@]})" >> $LOGFILE #debug
 done #while key<
 done #for 0 1
 }
@@ -447,13 +445,12 @@ mkdir -p "$SUBDIR"
 PageGen "$@"
 Cobbler
 #============ DEBUG
-echo
 #if ((wordcount != ${SOURCEwc[0]})); then
 #	echo "SOURCE WORD COUNT DOES NOT MATCH, forcefully cleaning files to prevent perverted output"
 #	echo "check source material for \* or \~ characters"
 #	rm -r $SUBDIR/FINAL*
 #fi
-echo  ${#conconREF[@]} ${conconREF[-1]} >> $LOGFILE
+echo  "Pages:${#conconREF[@]} Last Element: ${conconREF[-1]}" >> $LOGFILE
 echo 'elapsed seconds' $(($(date +%s)-dateserial))|tee -a $LOGFILE
 echo "sourcewordcount: ${SOURCEwc[0]} wordcount: $wordcount \
 sourcecharcount: ${SOURCEwc[1]} pageconstringcount: $pageconstringcount \
