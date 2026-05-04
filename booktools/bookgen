@@ -1,5 +1,10 @@
 #!/usr/bin/env bash
 
+[[ -z $1 ]] && printf "pass the ebible/corpus/ bible file as an argument;" ; exit
+
+#make script executable with command "chmod +x bookgen" (3.8 bash manual)
+#run the script with "./address/to/bookgen address/to/ebible/corpus/biblefile" (4.1 bash manual, Bourne Shell Builtins "a period")
+
 # This script creates 2 html files, which are to be turned into PDFs with (preferably Chrome's) print preview
 # 	afterward, all of pdf0 is printed, flipped hand over fist/x-axis 180 over z-axis, placed back into the printer
 # 	and then all of pdf1 is printed
