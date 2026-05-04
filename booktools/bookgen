@@ -34,7 +34,6 @@ ColSwitch=($($LeftToRight && printf "%d %d" 0 1 || printf "%d %d" 1 0)) #order t
 BOOKCAP=(31170) #TODO
 declare -A FontMime=([ttf]="truetype" [otf]="opentype" [woff]="woff" [woff2]="woff")
 printf "%s\n" "${BookMeta[@]/\#/: }"|cat -n
-printf "%s\n" "${FontMime[${FontLink##*.}]}"
 #menu
 # read -r -t 4 -p "Papers per Sheaf (default 16 if empty):" SheafPapersARG
 }
@@ -267,7 +266,7 @@ SeriesTop
 for SIDE in {0..1}; do
 >$SUBDIR/FINAL$SIDE.html
 
-eval "CurrentTransformCopy=(\"\${${TRANSFORMREFERENCEARRAY[$SIDE]}}\")"
+eval "CurrentTransformCopy=(\${${TRANSFORMREFERENCEARRAY[$SIDE]}})"
 PAGEKEYS=0
 
 cat <<-EOF >> "$SUBDIR/FINAL$SIDE.html"
@@ -319,6 +318,7 @@ body {
  margin-right: 20%;
 }
 .ChapterHeader {
+ text-align: center;
  font-size: $((FontBoxH+1))pt;
  display: block;
  margin: 1pt;
@@ -341,7 +341,7 @@ body {
  margin-bottom: ${FontBoxH}pt;
 }
 table[is="table${ColSwitch[0]}"] {
- width: 50%;
+ min-width: 50%;
  float: left;
  font-size: ${FontBoxH}pt;
  line-height: $LineSpace;
@@ -349,7 +349,7 @@ table[is="table${ColSwitch[0]}"] {
  border-spacing: 0px;
  }
 table[is="table${ColSwitch[1]}"] {
- width: 50%;
+ min-width: 50%;
  float: right;
  font-size: ${FontBoxH}pt;
  line-height: $LineSpace;
@@ -410,7 +410,7 @@ fi
 	for ((i=0;i<c1;i++)); do
 	pagecon+=("<tr><td is=\"td0\">${Page1[$i]}</td></tr>")
 	done
-	pagecon+=("</table><table is=\"table1\"")
+	pagecon+=("</table><table is=\"table1\">")
 	for ((i=0;i<c1;i++)); do
 	pagecon+=("<tr><td is=\"td1\">${Page1[$((i+c1))]}</td></tr>")
 	done
@@ -421,7 +421,7 @@ fi
 	for ((i=0;i<c2;i++)); do
 	pagecon+=("<tr><td is=\"td0\">${Page2[$i]}</td></tr>")
 	done
-	pagecon+=("</table><table is=\"table1\"")
+	pagecon+=("</table><table is=\"table1\">")
 	for ((i=0;i<c2;i++)); do
 	pagecon+=("<tr><td is=\"td1\">${Page2[$((i+c2))]}</td></tr>")
 	done
