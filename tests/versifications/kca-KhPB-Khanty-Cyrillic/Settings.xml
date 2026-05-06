@@ -1,7 +1,0 @@
-<ScriptureText>
-            <Versification>5</Versification>
-            <LanguageIsoCode>kca:::</LanguageIsoCode>
-            <BiblicalTermsListSetting>Major::BiblicalTerms.xml</BiblicalTermsListSetting>
-            <Naming BookNameForm="MAT" PostPart=".usfm" PrePart="" />
-            <DeterminedVersification>False</DeterminedVersification>
-            </ScriptureText>
