@@ -32,3 +32,4 @@
 2d0:
 -right to left only normalizes orientation of verse numbers, not numbers in text
 -BOOK2LINE has the lines every book is found, and there is purpose to be able to print single books at a time ie proverbs
+ > full / NT (NT or NT+psalms+proverbs) / gospels (single or all)
