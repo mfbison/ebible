@@ -21,7 +21,7 @@ LOGFILE=$SUBDIR/LOGFILE.txt
 TRANSLATIONSINDEXFILE="../metadata/translations.csv"
 mapfile -t source < $SOURCEFILE
 mapfile -t indexlinearray < $INDEXFILE
-set -f #stop file expansion from * character in strings, set globally, so script cannot use file "globbing" for any method after this point
+set -f #stop file expansion from * character in strings. set globally, so script must not use file "globbing" for any method after this point
 w=0
 while [[ -z "${source[$w]}" ]]; do
 ((w++))
@@ -38,7 +38,7 @@ EndoBook=("" "${EndoBook[@]}") #start index from 1 to match book nums
 IFS="@" read -r FontLink FontAvgW < <(awk -v FS=$'\t' -v fw="${BookMeta[28]##*#}" '$1==fw {print $2"@"$3}' link_font.tsv)
 #OTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $13}' $TRANSLATIONSINDEXFILE) # unused
 #NTNO=$(awk -k -v str="$InputBookName" '$1 ~ $str {print $16}' $TRANSLATIONSINDEXFILE) # unused
-[[ ${BookMeta[26]##*#} == "ltr" ]] && LeftToRight=true||LeftToRight=false #every file is either ltr or rtl
+[[ ${BookMeta[26]##*#} == "rtl" ]] && LeftToRight=false||LeftToRight=true #every file is either ltr or rtl
 $LeftToRight && TextAlignSwitch=(0 1) || TextAlignSwitch=(1 0) #order the left and right elements in css
 BOOKCAP=(31170) #TODO
 declare -A FontMime=([ttf]="truetype" [otf]="opentype" [woff]="woff" [woff2]="woff")
@@ -62,15 +62,17 @@ a logical definition of book format"
 
 DocumentRules()
 {
-	read -r -t 30 -p "FontBoxHeight(points, default 7):" FontBoxARG
-	read -r -t 30 -p "LineSpacing(default 1.2):" LineSpaceARG
+  read -r -t 30 -p "FontBoxHeight(points, default 7): " FontBoxARG
+  read -r -t 30 -p "LineSpacing(default 1.2): " LineSpaceARG
+  read -r -t 30 -p "Page Height(default 595pt/a4 landscape): " PageHARG
+  read -r -t 30 -p "Page Width(default ~842pt/a4 landscape): " PageWARG
 
 BindingTabNO=0
 # Points==========
-PageH=842
-PageW=595
-BookletPageH=$PageW
-BookletPageW=$((PageH/2))
+PageH=${PageHARG:=595}
+PageW=${PageWARG:=842}
+BookletPageH=$PageH
+BookletPageW=$((PageW/2))
 FontBoxH=${FontBoxARG:=7}
 FontBoxW=$(awk \
 	-v fbh=$FontBoxH \
@@ -149,14 +151,14 @@ for ((sheafi=1;sheafi<SheafHarmonics;sheafi++)); do
 		TransformSet2+=($((${TransformSet2[$TShalf]} + SheafRange*sheafi))) #this TransformSet2 must happen after the entirety of half the printing job is finished and the paper has been fed at the correct orientation.(bottom up and over, 180 turn...somersault and cartwheel)
 	done
 done
-#=== modulus, not harmonic
+#=== remainder, not harmonic
 if ((SheafModulus != 0)); then # FinalSheaf; the sheaf that is not a complete harmonic at the end of the book, equal to pages % sheafrange, earlier contrived to be div by 4
-	ModTSStage=($(( (BookPages+BookPagesCeiling+1)-SheafModulus ))
+  ModTSStage=($(( (BookPages+BookPagesCeiling+1)-SheafModulus ))
 	            $(( BookPages+BookPagesCeiling )) ) #Final lower and upper bounds, as defined by final modulus size instead of sheaf size
 	for ((finalsheaf=0;finalsheaf<(SheafModulus/4);finalsheaf++)); do
-	  TransformSet1+=($((ModTSStage[TextAlignSwitch[1]]${OpSwitch[TextAlignSwitch[1]]}))
+    TransformSet1+=($((ModTSStage[TextAlignSwitch[1]]${OpSwitch[TextAlignSwitch[1]]}))
 		                $((ModTSStage[TextAlignSwitch[0]]${OpSwitch[TextAlignSwitch[0]]})))
-		TransformSet2+=($((ModTSStage[TextAlignSwitch[0]]${OpSwitch[TextAlignSwitch[0]]}))
+    TransformSet2+=($((ModTSStage[TextAlignSwitch[0]]${OpSwitch[TextAlignSwitch[0]]}))
 		                $((ModTSStage[TextAlignSwitch[1]]${OpSwitch[TextAlignSwitch[1]]})))
 	done
 fi
@@ -166,7 +168,7 @@ PageGen()
 {
 READKEY=$w #number to check first line location
 BookName=${EndoBook[$((10#${indexlinearray[$READKEY]::3}))]} #first values
-TempBookName=$BookName 
+TempBookName=$BookName
 printf '%s' "$BookName/"
 Page=1
 constr=(-1) #a header element to correctly track the whitespace added between words eg word#word#word is 3 words and 2 ws. word is 1 word, 0 whitespace
@@ -213,11 +215,11 @@ done #while < 2*ColAllocH
 done #while true
 
 #=== final page print
-printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}- PAGE COUNT ${#conconREF[@]}" #debug
 	eval "concon$Page=(\"$BookName@$TempBookName\" \"\${conconstr[@]}\")"
 	conconREF+=("concon$Page[@]")
 	TempBookName=""
 	unset conconstr
+printf '\n%s\n' "FINAL LINE -${sourcelinearray[*]}- PAGE COUNT ${#conconREF[@]}" #debug
 }
 
 Read() #new read operations. book change, chapter change, break whole page
@@ -314,7 +316,7 @@ cat <<-EOF >> "$SUBDIR/FINAL$SIDE.html"
  font-style: normal;
 }
 @page {
- size: A4 landscape;
+ size: ${PageH}pt ${PageW}pt; /* height & width */
 }
 @media print {
  .a4-page {
@@ -326,8 +328,8 @@ body {
 }
 .a4-page {
  background: white;
- width: 297mm;
- height: 210mm;
+ width: ${PageH}pt;
+ height: ${PageW}pt;
 }
 .wrapper0 {
  padding: 0% 2% 0% 2%;
@@ -416,7 +418,7 @@ EOF
 
 while [[ $PAGEKEYS -lt ${#CurrentTransformCopy[@]} ]]; do
 
-  PAGENO1="${CurrentTransformCopy[((PAGEKEYS++))]:-7777}"
+   PAGENO1="${CurrentTransformCopy[((PAGEKEYS++))]:-7777}"
 	eval "Page1=(\"\${${conconREF[((PAGENO1-1))]:-7777}}\")"
 	BN1=${Page1[0]%%@*} #array header element data
 	BH1=${Page1[0]##*@}
@@ -495,7 +497,7 @@ printf '%s\n' \
 "wordcount: $wordcount" \
 "sourcecharcount: ${SOURCEwc[1]}" \
 "pageconcharcount: $pageconcharcount" \
-"sourceworddiff: $((${SOURCEwc[1]}-pageconcharcount))" \
+"sourceworddiff: $((SOURCEwc[1]-pageconcharcount))" \
 "set1: ${TransformSet1[*]}" \
 "set2: ${TransformSet2[*]}" \
 "READKEY/$READKEY lastbook/$BookName" \
