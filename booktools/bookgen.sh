@@ -316,7 +316,7 @@ cat <<-EOF >> "$SUBDIR/FINAL$SIDE.html"
  font-style: normal;
 }
 @page {
- size: ${PageH}pt ${PageW}pt; /* height & width */
+ size: ${PageW}pt ${PageH}pt; /* width & height */
 }
 @media print {
  .a4-page {
@@ -328,8 +328,8 @@ body {
 }
 .a4-page {
  background: white;
- width: ${PageH}pt;
- height: ${PageW}pt;
+ width: ${PageW}pt;
+ height: ${PageH}pt;
 }
 .wrapper0 {
  padding: 0% 2% 0% 2%;
